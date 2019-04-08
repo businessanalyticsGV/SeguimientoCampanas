@@ -1,0 +1,282 @@
+/*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+   Marca de Reservaciones con Código de Promoción
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+Reservaciones:
+LOAD
+    ReservationNumber,
+    Mix_NA_IN,
+    DateCreated,
+    Plaza,
+    %MemberID,
+    CapturingUserOriginal,
+    ReservationSubTypeNew,
+    FirstNight,
+    LastNight,
+    Guest,
+    Mix_programa,
+    ReservationStatus,
+    Mix_canal,
+    Mix_Mercado,
+    NotesText,
+    Año_Mes,
+    Año,
+	Mes,
+	RoomType,
+    SiteGroup,
+    Deposits, 
+    Service,
+    [No Show], 
+    Area,
+    Promotion,
+    If(PromotionCode like '*OC*' or Service Like '*OC*','Con Código OC','Sin Código OC') as PromotionCode_OC
+    
+FROM [lib://Bases de Datos/ReservacionesTSW_Unicas.qvd]
+(qvd)Where ReservationStatus<>'Canceled' and [No Show]='No' and Deposits='No' and ((Year(DateCreated)=2018 and Month(DateCreated)=12) or (Year(DateCreated)>=2019));
+
+LEFT JOIN
+
+LOAD
+    ReservationNumber,
+    PromotionCode,
+    Marca
+FROM [lib://Base Trabajo Blast/Base_Prueba.xlsx]
+(ooxml, embedded labels, table is Sheet1) Where NOT IsNull(Marca);
+
+Store Reservaciones INTO [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
+(qvd);
+DROP TABLE Reservaciones;
+
+
+/*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+   Reservaciones de members a los que se les envío un Blast
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+BaseAcumulada:
+LOAD
+    %MemberID, //Llave
+    "Codigo TSW",
+    "Codigo TSW" AS [Nombre Blast],
+    "fecha de envio blast",
+    Plaza AS Plaza_Blast,
+    Mix_NA_IN AS Mix_NA_IN_Blast
+FROM [lib://Bases Blast/BaseAcumulada_2019_Prueba.csv]
+(txt, utf8, embedded labels, delimiter is ',', msq);
+
+LEFT JOIN
+
+LOAD
+	%MemberID, //Llave
+	ReservationNumber,
+    Mix_NA_IN,
+    DateCreated,
+    Plaza,
+    Marca AS PromotionCode
+FROM [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
+(qvd);
+
+
+/*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+			Se marcan las resevaciones sin código
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+Condiciones_SC:
+LOAD
+    %MemberID,
+    "fecha de envio blast" as FechaB,
+    "Codigo TSW",
+    Plaza_Blast,
+    Mix_NA_IN_Blast,
+    ReservationNumber,
+    Mix_NA_IN,
+    DateCreated,
+    Plaza,
+    PromotionCode,
+    If(NOT IsNull(ReservationNumber) and IsNull(PromotionCode),'Si','No') as [Reservación sin Codigo]
+RESIDENT BaseAcumulada
+WHERE DateCreated="fecha de envio blast" AND 
+	  If(Not IsNull(Plaza_Blast),Plaza_Blast=Plaza) AND 
+      If(NOT IsNull(Mix_NA_IN_Blast),Mix_NA_IN_Blast=Mix_NA_IN) 
+;
+DROP TABLE BaseAcumulada;
+
+Reservaciones_SC:
+LOAD 
+	%MemberID,
+    FechaB,
+    "Codigo TSW",
+    Mix_NA_IN,
+    ReservationNumber,
+    DateCreated,
+    [Reservación sin Codigo]
+RESIDENT Condiciones_SC 
+WHERE [Reservación sin Codigo]='Si'
+;     
+STORE Reservaciones_SC INTO [lib://Base Trabajo Blast/Reservaciones_Sin_Codigo.qvd](qvd);
+DROP TABLE Condiciones_SC;    
+DROP TABLE Reservaciones_SC;
+
+/*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+			Reservaciones con Código de Promoción
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+Reservaciones_CC:
+LOAD
+	ReservationNumber,
+    Mix_NA_IN,
+    DateCreated,
+    Plaza,
+    %MemberID,//Llave
+    CapturingUserOriginal,
+    ReservationSubTypeNew,
+    FirstNight,
+    LastNight,
+    Guest,
+    Mix_programa,
+    ReservationStatus,
+    Mix_canal,
+    Mix_Mercado,
+    NotesText,
+    Año_Mes,
+    Año,
+	Mes,
+	RoomType,
+    SiteGroup,
+    Deposits, 
+    Service,
+    [No Show], 
+    Area,
+    Promotion,
+    If(IsNull(Marca),'Sin Código',Marca) AS PromotionCode,
+    PromotionCode_OC
+    
+FROM [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
+(qvd);
+
+LEFT JOIN
+
+Reservaciones_SC:
+LOAD 
+	ReservationNumber,
+	[Codigo TSW] AS [Codigo TSWSC],
+    [Reservación sin Codigo],
+    [Codigo TSW] AS [Nombre BlastSC]
+
+FROM [lib://Base Trabajo Blast/Reservaciones_Sin_Codigo.qvd]
+(qvd);
+
+LEFT JOIN
+
+BaseAcumulada_Blast:
+LOAD
+    %MemberID, //Llave
+    "Codigo TSW" AS PromotionCode,//Llave
+    "Codigo TSW" AS [Nombre Blast],
+    "fecha de envio blast" AS FechaB,
+    Plaza AS Plaza_Blast,
+    Mix_NA_IN AS Mix_NA_IN_Blast
+FROM [lib://Bases Blast/BaseAcumulada_2019_Prueba.csv]
+(txt, utf8, embedded labels, delimiter is ',', msq)
+;
+/*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+			Calculo de Distancias
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+Distancia:
+LOAD *,
+	DateCreated-FechaB AS Distancia
+
+RESIDENT Reservaciones_CC;
+DROP TABLE Reservaciones_CC;
+
+Distancias:
+LOAD *,
+	 If(PromotionCode<>'Sin Código','Con Código TSW','Sin Código TSW') AS [Con Código TSW],
+     If(PromotionCode<>'Sin Código' AND (Distancia>=0 AND Distancia<=46),'0-46 Días','Otra') AS [Distancia Correcta],															
+	 If(PromotionCode<>'Sin Código' AND Distancia<=15,'15 Días', 															
+		If(PromotionCode<>'Sin Código' AND (Distancia>15),'Más de 15 Días','Otra')) AS [Distancia Promedio] 
+
+RESIDENT Distancia;
+DROP TABLE Distancia;
+
+Seguimiento:
+LOAD *,  
+	If(PromotionCode_OC='Con Código OC' AND [Con Código TSW]='Con Código TSW' AND ([Distancia Promedio]<>'Otra'),'OC con Código',															
+        If(PromotionCode_OC='Con Código OC' AND [Con Código TSW]='Sin Código TSW','OC sin Código',																
+			If([Con Código TSW]='Con Código TSW' AND Distancia<=15,'Envío de Blast Con Código',													
+				If([Reservación sin Codigo]='Si','Envío de Blast Sin Código',												
+					If(([Con Código TSW]='Con Código TSW' AND Distancia>15) OR (isnull([Nombre Blast]) AND [Con Código TSW]='Con Código TSW'),'Herramienta de Cierre Con Código','Sin Campaña'))))) AS Seguimiento										
+
+RESIDENT Distancias;
+DROP TABLE Distancias;
+
+Tabla_BD:																
+LOAD																
+	 %MemberID, 															
+     Mix_NA_IN,																
+     ReservationSubTypeNew,																
+     ReservationNumber,																
+     CapturingUserOriginal,																
+     DateCreated, 																
+     FirstNight,																
+     LastNight,																
+     Guest,																
+     ReservationStatus,																
+     Mix_programa,																
+     Mix_canal,																
+     Mix_Mercado,																
+     NotesText,																
+     Deposits,																
+     Service,																															
+     [No Show], 																
+     PromotionCode,																
+     FechaB,																
+     [Nombre Blast],																
+     [Codigo TSWSC], 																
+//      [Campaign Type], 																
+     Distancia, 																
+     [Con Código TSW],																
+	 [Distancia Promedio],															
+	 [Distancia Correcta],															
+	 Año_Mes,															
+	 Año,															
+	 PromotionCode_OC,															
+	 [Reservación sin Codigo],															
+	 Mes,																													
+	 Promotion,															
+     RoomType,																
+     [Nombre BlastSC],																
+     Seguimiento,																
+     IF(RoomType='Villa 3 bedroom','Central Park Puerto Peñasco',SiteGroup) as SiteGroup,																
+     Area,
+     YEAR(FechaB) AS AñoCampaña 
+    																
+RESIDENT Seguimiento;																
+DROP TABLE Seguimiento;
+
+TablaBI1:																
+LOAD *,																																												
+ 	 If([Reservación sin Codigo] = 'Si',[Codigo TSWSC],PromotionCode)  as Código1,															
+ 	 If([Reservación sin Codigo] = 'Si',[Nombre BlastSC],[Nombre Blast])  as [Nombre de la Campaña1]															
+ 	 									 						
+RESIDENT Tabla_BD;																
+DROP TABLE Tabla_BD; 
+
+Clasificacion:
+LOAD *,	Today() AS Actualización,
+	 If(Código1='' or isNull(Código1),'Sin Código',Código1) as Código,															
+ 	 	If([Nombre de la Campaña1]='' or isnull([Nombre de la Campaña1]),'Sin Campaña',[Nombre de la Campaña1])  as [Nombre de la Campaña],															
+ 																
+ 	 If(Seguimiento='Envío de Blast Sin Código' or Seguimiento='Envío de Blast Con Código','Envío de Blast',															
+	 	If(Seguimiento='OC sin Código' or Seguimiento='OC con Código','Herramienta de Cierre OC',														
+	 		If(Seguimiento='Herramienta de Cierre Con Código','Herramienta de Cierre','Sin Campaña')))as Clasificación													
+	 															
+									 							
+Resident TablaBI1;																
+DROP Table TablaBI1; 	 																									
+
+Left Join 
+
+CatalogoBlast:
+LOAD
+    Codigo as Código,
+    Descripción as Group_Campaigns
+FROM [lib://Base Trabajo Blast/Catalogo Prueba Blast.xlsx]
+(ooxml, embedded labels, table is Sheet1);
+	 	
+Store Clasificacion Into [lib://Base Trabajo Blast/Base_Trabajo1.qvd](qvd);
