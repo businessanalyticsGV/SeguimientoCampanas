@@ -1,22 +1,6 @@
 import pandas as pd
 import numpy as np
 
-df = pd.read_csv('E:/Procesos Sense/Catalogos/baseBOB.csv')
-df = df[pd.notnull(df['PromotionCode'])]
-
-df_cat = pd.read_excel('E:/Procesos Sense/Catalogos/CodigosICE.xlsx')
-
-df['llave'] = [str([code for code in df_cat['Group Code'] if code in prom]) for prom in df['PromotionCode']]
-df['llave'] = [prom.replace('[',"") for prom in df['llave']]
-df['llave'] = [prom.replace(']',"") for prom in df['llave']]
-df['llave'] = [prom.replace("'","") for prom in df['llave']]
-df.to_excel('E:/Procesos Sense/Catalogos/CodigoICEGallery_Python.xlsx')
-
-
-
-import pandas as pd
-import numpy as np
-
 Base_busqueda = pd.read_csv('E:\Procesos Sense\DB Blast\ListaPC_Busqueda.csv')
 ##print(Base_busqueda)
 

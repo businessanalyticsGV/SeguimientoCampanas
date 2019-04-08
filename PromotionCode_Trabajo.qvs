@@ -1,0 +1,7 @@
+ListaPC:
+LOAD ReservationNumber,
+	 PromotionCode
+
+FROM [lib://Bases de Datos/ReservacionesTSW_Unicas.qvd]
+(qvd) WHERE NOT IsNull(PromotionCode) and DateCreated>='01/12/2018' and Deposits='No' and ReservationStatus<>'Canceled' and [No Show]='No';
+STORE ListaPC INTO [lib://Base Trabajo Blast/ListaPC_Busqueda.csv](txt);   
