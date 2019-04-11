@@ -11,4 +11,10 @@ Base_busqueda['Marca'] = [prom.replace('[',"") for prom in Base_busqueda['Marca'
 Base_busqueda['Marca'] = [prom.replace(']',"") for prom in Base_busqueda['Marca']]
 Base_busqueda['Marca'] = [prom.replace("'","") for prom in Base_busqueda['Marca']]
 
+Base_busqueda.rename(columns = {'PromotionCode':'PromotionCodeOrig','Marca':'PromotionCode'}, inplace = True)
+Base_busqueda = Base_busqueda.merge(Catalogo_Codigos[['PromotionCode','Codigo','fecha de envio blast','Reusado']], how = 'left', on = ['PromotionCode'])
+
+#Base_busqueda['Codigo']=np.where(Base_busqueda['DateCreated']>=Base_busqueda['fecha de envio blast'])
 Base_busqueda.to_excel('E:\Procesos Sense\DB Blast\Base_Prueba.xlsx')
+
+Base_busqueda.to_csv('Base_Prueba.csv')

@@ -31,16 +31,18 @@ LOAD
     If(PromotionCode like '*OC*' or Service Like '*OC*','Con Código OC','Sin Código OC') as PromotionCode_OC
     
 FROM [lib://Bases de Datos/ReservacionesTSW_Unicas.qvd]
-(qvd)Where ReservationStatus<>'Canceled' and [No Show]='No' and Deposits='No' and ((Year(DateCreated)=2018 and Month(DateCreated)=12) or (Year(DateCreated)>=2019));
+(qvd)Where ReservationStatus<>'Canceled' and [No Show]='No' and Deposits='No' and ((Year(DateCreated)=2018 and Num(Month(DateCreated))=12) or (Year(DateCreated)>=2019));
 
 LEFT JOIN
 
 LOAD
     ReservationNumber,
-    PromotionCode,
-    Marca
+    If(Reusado=0,PromotionCode,
+        If([DateCreated]>=[fecha de envio blast],PromotionCode,'')) AS  PromotionCode
+
 FROM [lib://Base Trabajo Blast/Base_Prueba.xlsx]
-(ooxml, embedded labels, table is Sheet1) Where NOT IsNull(Marca);
+(ooxml, embedded labels, table is Sheet1) Where NOT IsNull(PromotionCode)
+;
 
 Store Reservaciones INTO [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
 (qvd);
@@ -69,7 +71,7 @@ LOAD
     Mix_NA_IN,
     DateCreated,
     Plaza,
-    Marca AS PromotionCode
+    PromotionCode
 FROM [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
 (qvd);
 
@@ -143,7 +145,7 @@ LOAD
     [No Show], 
     Area,
     Promotion,
-    If(IsNull(Marca),'Sin Código',Marca) AS PromotionCode,
+    If(IsNull(PromotionCode),'Sin Código',PromotionCode) AS PromotionCode,//Llave
     PromotionCode_OC
     
 FROM [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
@@ -153,10 +155,11 @@ LEFT JOIN
 
 Reservaciones_SC:
 LOAD 
-	ReservationNumber,
+	ReservationNumber,//Llave
 	[Codigo TSW] AS [Codigo TSWSC],
     [Reservación sin Codigo],
-    [Codigo TSW] AS [Nombre BlastSC]
+    [Codigo TSW] AS [Nombre BlastSC],
+    FechaB AS [FechaB_SC]
 
 FROM [lib://Base Trabajo Blast/Reservaciones_Sin_Codigo.qvd]
 (qvd);
@@ -181,7 +184,8 @@ Distancia:
 LOAD *,
 	DateCreated-FechaB AS Distancia
 
-RESIDENT Reservaciones_CC;
+RESIDENT Reservaciones_CC
+WHERE DateCreated>=FechaB OR IsNull(FechaB) or FechaB='';
 DROP TABLE Reservaciones_CC;
 
 Distancias:
@@ -225,11 +229,9 @@ LOAD
      Service,																															
      [No Show], 																
      PromotionCode,																
-     FechaB,																
+     FechaB AS FechaB1,																
      [Nombre Blast],																
      [Codigo TSWSC], 																
-//      [Campaign Type], 																
-     Distancia, 																
      [Con Código TSW],																
 	 [Distancia Promedio],															
 	 [Distancia Correcta],															
@@ -244,23 +246,25 @@ LOAD
      Seguimiento,																
      IF(RoomType='Villa 3 bedroom','Central Park Puerto Peñasco',SiteGroup) as SiteGroup,																
      Area,
-     YEAR(FechaB) AS AñoCampaña 
-    																
+     [FechaB_SC]
+         																
 RESIDENT Seguimiento;																
 DROP TABLE Seguimiento;
 
 TablaBI1:																
 LOAD *,																																												
  	 If([Reservación sin Codigo] = 'Si',[Codigo TSWSC],PromotionCode)  as Código1,															
- 	 If([Reservación sin Codigo] = 'Si',[Nombre BlastSC],[Nombre Blast])  as [Nombre de la Campaña1]															
+ 	 If([Reservación sin Codigo] = 'Si',[Nombre BlastSC],[Nombre Blast])  as [Nombre de la Campaña1],
+     If([Reservación sin Codigo] = 'Si',[FechaB_SC], FechaB1) AS FechaB														
  	 									 						
 RESIDENT Tabla_BD;																
-DROP TABLE Tabla_BD; 
+DROP TABLE Tabla_BD;
+Drop Fields [FechaB_SC],FechaB1;
 
 Clasificacion:
 LOAD *,	Today() AS Actualización,
-	 If(Código1='' or isNull(Código1),'Sin Código',Código1) as Código,															
- 	 	If([Nombre de la Campaña1]='' or isnull([Nombre de la Campaña1]),'Sin Campaña',[Nombre de la Campaña1])  as [Nombre de la Campaña],															
+     If(Código1='' or isNull(Código1),'Sin Código',Código1) as Código,															
+ 	 If([Nombre de la Campaña1]='' or isnull([Nombre de la Campaña1]),'Sin Campaña',[Nombre de la Campaña1])  as [Nombre de la Campaña],															
  																
  	 If(Seguimiento='Envío de Blast Sin Código' or Seguimiento='Envío de Blast Con Código','Envío de Blast',															
 	 	If(Seguimiento='OC sin Código' or Seguimiento='OC con Código','Herramienta de Cierre OC',														
@@ -268,218 +272,218 @@ LOAD *,	Today() AS Actualización,
 	 															
 									 							
 Resident TablaBI1;																
-DROP Table TablaBI1; 	 																									
+DROP Table TablaBI1; 
+Drop Field [Nombre de la Campaña1];	 																									
 
 Left Join 
 
 CatalogoBlast:
 LOAD
-    Codigo as Código,
-    Descripción as Group_Campaigns
+    PromotionCode as Código,
+    Descripción as Group_Campaigns,
+    AñoCampaña
 FROM [lib://Base Trabajo Blast/Catalogo Prueba Blast.xlsx]
 (ooxml, embedded labels, table is Sheet1);
-	 	
-store Clasificacion into [lib://Base Trabajo Blast/Blast.csv](txt);
-store Clasificacion into [lib://Base Trabajo Blast/Blast.qvd](qvd);
 Drop table Clasificacion;
-
 /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-			Rentabilidad Campañas
+			Union de Base de años anteriores
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
-RentBlast:
+Años_Pasados:
 LOAD
-    ReservationNumber,
-    Prioridad,
-    %MemberID,
-    ReservationStatus,
-    Mix_NA_IN,
-    ReservationSubTypeNew,
-    DateCreated,
-    FirstNight,
-    LastNight,
-    Guest,
-    Deposits,
-    Service,
-    Mix_programa,
-    Mix_canal,
-    Mix_Mercado,
-    "No Show",
-    PromotionCode,
-    FechaB,
-    "Nombre Blast",
-    "Codigo TSWSC",
-    "Campaign Type",
-    Distancia,
-    "Con Código TSW",
-    "Distancia Promedio",
-    "Distancia Correcta",
-    Año_Mes,
-    Año,
-    PromotionCode_OC,
-    "Reservación sin Codigo",
-    Mes,
-    Promotion,
-    RoomType,
-    "Nombre BlastSC",
-    Seguimiento1,
-    SiteGroup,
-    Area,
-    Seguimiento,
-    Código1,
-    "Nombre de la Campaña1",
-    Código2,
-    "Nombre de la Campaña",
-    Clasificación,
-    PromotionCodeACA17,
-    Código,
-    AñoCampaña,
-    Group_Campaigns
-FROM [lib://Base Trabajo Blast/Blast.qvd]
-(qvd);
+    ReservationNumber
+    ,%MemberID
+    ,[Mix_NA_IN]
+    ,ReservationSubTypeNew
+    ,CapturingUserOriginal
+    ,DateCreated
+    ,FirstNight
+    ,LastNight
+    ,Guest
+    ,ReservationStatus
+    ,Mix_programa
+    ,Mix_canal
+    ,Mix_Mercado
+    ,NotesText
+    ,Deposits
+    ,Service
+    ,[No Show]
+    ,PromotionCode
+    ,FechaB
+    ,[Nombre Blast]
+    ,[Codigo TSWSC]
+    ,[Con Código TSW]
+    ,[Distancia Promedio]
+    ,[Distancia Correcta]
+    ,Año_Mes
+    ,Año
+    ,PromotionCode_OC
+    ,[Reservación sin Codigo]
+    ,Mes
+    ,Promotion
+    ,RoomType
+    ,[Nombre BlastSC]
+    ,SiteGroup
+    ,Area
+    ,Seguimiento
+    ,Código1  
+    ,[Nombre de la Campaña]
+    ,Clasificación
+    ,Código
+    ,AñoCampaña
+    ,Group_Campaigns
 
-left join
+FROM [lib://Base Trabajo Blast/Blast_2018.csv]
+(txt, utf8, embedded labels, delimiter is ',', msq)
+//WHERE AñoCampaña<2019 
+;
 
-Rentabilidad:
-LOAD Distinct
- [Pago Hospedaje Propietaria a Operadora] as CostoHospedaje,
-	Comisión1 as Comisión , 
-    Closing_Cost1 as [Closing Cost], 
-    Remanente,
-    [Tipo de Cambio],
-	Mix_canal as Mix_canal_Rent,
-	Mix_NA_IN as Mix_NA_IN_Rent, 
-	Area as Area_Rent, 
-	ReservationNumber, 
-	ReservationSubTypeNew as ReservationSubTypeNew_Rent, 
-	ReservationTypeNew as ReservationTypeNew_Rent,
-	Venta_Ok, 
-	FirstNight as FirstNight_Rent, 
-	Mix_Mercado as Mix_Mercado_Rent, 
-	Mix_programa as Mix_programa_Rent, 
-	ReservationStatus as ReservationStatus_Rent, 
-	Mix_Cliente as Mix_Cliente_Rent, 
-	DateCreated as DateCreated_Rent, 
-	Nights as Nights_Rent, 
-	SiteGroup as SiteGroup_Rent, 
-	RoomType as RoomType_Rent, 
-	[No Show] as [No Show Rent], 
-	Ident_Hook as Ident_Hook_Rent, 
-	Clasificador_HK as Clasificador_HK_Rent, 
-	Año_Mes as Año_Mes_Rent,
-	Año as AñoRent, 
-	YEAR(FirstNight) AS año_Llegada,
-	MONTH(FirstNight) AS mes_Llegada,
-	IF(ReservationStatus='NoShow',1,0) AS [No Show Status],
-	TOUR as Tour,
-	Precio_Dolares as [Monto de Venta],
-	Plaza as Plaza_Rent,
-    Ingresos,
-    Volumen1,
-    Egresos,
-    Siglas as Siglas_Rent,
-	SiteName as SiteName_Rent,
-	Año_Ventas as Año_Ventas_Rent,
-    1 as Rent
+// CONCATENATE
+
+// Base2019:
+// LOAD 
+//     ReservationNumber
+//     ,%MemberID
+//     ,[Mix_NA_IN]
+//     ,ReservationSubTypeNew
+//     ,CapturingUserOriginal
+//     ,DateCreated
+//     ,FirstNight
+//     ,LastNight
+//     ,Guest
+//     ,ReservationStatus
+//     ,Mix_programa
+//     ,Mix_canal
+//     ,Mix_Mercado
+//     ,NotesText
+//     ,Deposits
+//     ,Service
+//     ,[No Show]
+//     ,PromotionCode
+//     ,FechaB
+//     ,[Nombre Blast]
+//     ,[Codigo TSWSC]
+//     ,[Con Código TSW]
+//     ,[Distancia Promedio]
+//     ,[Distancia Correcta]
+//     ,Año_Mes
+//     ,Año
+//     ,PromotionCode_OC
+//     ,[Reservación sin Codigo]
+//     ,Mes
+//     ,Promotion
+//     ,RoomType
+//     ,[Nombre BlastSC]
+//     ,SiteGroup
+//     ,Area
+//     ,Seguimiento
+//     ,Código1  
+//     ,[Nombre de la Campaña]
+//     ,Clasificación
+//     ,Código
+//     ,AñoCampaña
+//     ,Group_Campaigns
+//     ,Actualización
+
+// Resident Clasificacion Where Not IsNull(AñoCampaña);
+// Drop Table Clasificacion;
+// STORE Años_Pasados into [lib://Base Trabajo Blast/Blast.csv](txt);
+// STORE Años_Pasados into [lib://Base Trabajo Blast/Blast.qvd](qvd);
+// Drop table Años_Pasados;	 	
+
+// /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+// 			Rentabilidad Campañas
+// :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+// RentBlast:
+// LOAD
+//     ReservationNumber
+//     ,%MemberID
+//     ,[Mix_NA_IN]
+//     ,ReservationSubTypeNew
+//     ,CapturingUserOriginal
+//     ,DateCreated
+//     ,FirstNight
+//     ,LastNight
+//     ,Guest
+//     ,ReservationStatus
+//     ,Mix_programa
+//     ,Mix_canal
+//     ,Mix_Mercado
+//     ,NotesText
+//     ,Deposits
+//     ,Service
+//     ,[No Show]
+//     ,PromotionCode
+//     ,FechaB
+//     ,[Nombre Blast]
+//     ,[Codigo TSWSC]
+//     ,[Con Código TSW]
+//     ,[Distancia Promedio]
+//     ,[Distancia Correcta]
+//     ,Año_Mes
+//     ,Año
+//     ,PromotionCode_OC
+//     ,[Reservación sin Codigo]
+//     ,Mes
+//     ,Promotion
+//     ,RoomType
+//     ,[Nombre BlastSC]
+//     ,SiteGroup
+//     ,Area
+//     ,Seguimiento
+//     ,Código1  
+//     ,[Nombre de la Campaña]
+//     ,Clasificación
+//     ,Código
+//     ,AñoCampaña
+//     ,Group_Campaigns
+//     ,Actualización
+
+// FROM [lib://Base Trabajo Blast/Blast.qvd]
+// (qvd);
+
+// LEFT JOIN
+
+// Rentabilidad:
+// LOAD Distinct
+//  [Pago Hospedaje Propietaria a Operadora] as CostoHospedaje,
+// 	Comisión1 as Comisión , 
+//     Closing_Cost1 as [Closing Cost], 
+//     Remanente,
+//     [Tipo de Cambio],
+// 	Mix_canal as Mix_canal_Rent,
+// 	Mix_NA_IN as Mix_NA_IN_Rent, 
+// 	Area as Area_Rent, 
+// 	ReservationNumber, 
+// 	ReservationSubTypeNew as ReservationSubTypeNew_Rent, 
+// 	ReservationTypeNew as ReservationTypeNew_Rent,
+// 	Venta_Ok, 
+// 	FirstNight as FirstNight_Rent, 
+// 	Mix_Mercado as Mix_Mercado_Rent, 
+// 	Mix_programa as Mix_programa_Rent, 
+// 	ReservationStatus as ReservationStatus_Rent, 
+// 	Mix_Cliente as Mix_Cliente_Rent, 
+// 	DateCreated as DateCreated_Rent, 
+// 	Nights as Nights_Rent, 
+// 	SiteGroup as SiteGroup_Rent, 
+// 	RoomType as RoomType_Rent, 
+// 	[No Show] as [No Show Rent], 
+// 	Ident_Hook as Ident_Hook_Rent, 
+// 	Clasificador_HK as Clasificador_HK_Rent, 
+// 	Año_Mes as Año_Mes_Rent,
+// 	Año as AñoRent, 
+// 	YEAR(FirstNight) AS año_Llegada,
+// 	MONTH(FirstNight) AS mes_Llegada,
+// 	IF(ReservationStatus='NoShow',1,0) AS [No Show Status],
+// 	TOUR as Tour,
+// 	Precio_Dolares as [Monto de Venta],
+// 	Plaza as Plaza_Rent,
+//     Ingresos,
+//     Volumen1,
+//     Egresos,
+//     Siglas as Siglas_Rent,
+// 	SiteName as SiteName_Rent,
+// 	Año_Ventas as Año_Ventas_Rent,
+//     1 as Rent
 	
-FROM [lib://Rentabilidad/RentTotal2018.qvd]
-(qvd) where Año>=2019 and  ReservationStatus<>'Canceled';
-
-Base1:
-LOAD
-    ReservationNumber,
-    Prioridad,
-    %MemberID,
-    ReservationStatus,
-    Mix_NA_IN,
-    ReservationSubTypeNew,
-    DateCreated,
-    FirstNight,
-    LastNight,
-    Guest,
-    Deposits,
-    Service,
-    Mix_programa,
-    Mix_canal,
-    Mix_Mercado,
-    PromotionCode,
-    FechaB,
-    "Nombre Blast",
-    "Codigo TSWSC",
-    "Campaign Type",
-    Distancia,
-    "Con Código TSW",
-    "Distancia Promedio",
-    "Distancia Correcta",
-    Año_Mes,
-    Año,
-    PromotionCode_OC,
-    "Reservación sin Codigo",
-    Mes,
-    If(Promotion like '*Free Vacation*','Free Vacation',
-    	If(Promotion like '*$100 Resort Credit*','$100 Resort Credit',
-        	If(Promotion like '*Couples massage*','Couples Massage',
-            	If(Promotion like '*Cooking Class for 2*','Cooking Class for 2',
-                	If(Promotion like '*Round of golf for 2*','Round of Golf for 2',
-                    	If(Promotion like '*Weeklong happy hou*','Weeklong Happy Hour',
-                        	If(Promotion like '*Culinary tour for 2*','Culinary Tour for 2',
-                            	If(Promotion like '*Cena Romantica*','Private Cena Romantica',
-                                	If(Promotion like '**$2,500 de Mayan Credits*','',Promotion))))))))) as Promotion1,
-   	Promotion,
-    RoomType,
-    "Nombre BlastSC",
-    Seguimiento1,
-    SiteGroup,
-    Area,
-    Seguimiento,
-    Código1,
-    "Nombre de la Campaña1",
-    Código2,
-    "Nombre de la Campaña",
-    Clasificación,
-    PromotionCodeACA17,
-    Código,
-    AñoCampaña,
-    Group_Campaigns,
-    CostoHospedaje,
-    Comisión,
-    "Closing Cost",
-    Mix_canal_Rent,
-    Mix_NA_IN_Rent,
-    Area_Rent,
-    ReservationSubTypeNew_Rent,
-    ReservationTypeNew_Rent,
-    Venta_Ok,
-    FirstNight_Rent,
-    Mix_Mercado_Rent,
-    Mix_programa_Rent,
-    ReservationStatus_Rent,
-    Mix_Cliente_Rent,
-    DateCreated_Rent,
-    Nights_Rent,
-    SiteGroup_Rent,
-    RoomType_Rent,
-    Ident_Hook_Rent,
-    Clasificador_HK_Rent,
-    Año_Mes_Rent,
-    AñoRent,
-    año_Llegada,
-    mes_Llegada,
-    "No Show Status",
-    Tour,
-    [Tipo de Cambio],
-    "Monto de Venta",
-    Plaza_Rent,
-    Siglas_Rent,
-    SiteName_Rent,
-    Año_Ventas_Rent,
-    If(Rent=1,1,0) as Rent,
-	If([No Show]='No' and [No Show Rent]='Si','No',[No Show]) as [No Show],
-    Ingresos,
-    Egresos,
-    Volumen1,
-    Remanente
-
-Resident RentBlast;
-Drop Table RentBlast;
-store Base1 into [lib://Base Trabajo Blast/RentBlast.csv](txt);
-Drop Table Base1;
+// FROM [lib://Rentabilidad/RentTotal2018.qvd]
+// (qvd) where Año>=2016 and  ReservationStatus<>'Canceled';
