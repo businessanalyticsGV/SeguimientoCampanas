@@ -40,7 +40,7 @@ LOAD
     If(Reusado=0,PromotionCode,
         If([DateCreated]>=[fecha de envio blast],PromotionCode,'')) AS  PromotionCode
 
-FROM [lib://Base Trabajo Blast/Base_Prueba.xlsx]
+FROM [lib://Base Trabajo Blast/Base_PromotionCode_Trabajo.xlsx]
 (ooxml, embedded labels, table is Sheet1) Where NOT IsNull(PromotionCode)
 ;
 
@@ -60,7 +60,7 @@ LOAD
     "fecha de envio blast",
     Plaza AS Plaza_Blast,
     Mix_NA_IN AS Mix_NA_IN_Blast
-FROM [lib://Bases Blast/BaseAcumulada_2019_Prueba.csv]
+FROM [lib://Bases Blast/BaseAcumulada_2019_Actual.csv]
 (txt, utf8, embedded labels, delimiter is ',', msq);
 
 LEFT JOIN
@@ -73,7 +73,7 @@ LOAD
     Plaza,
     PromotionCode
 FROM [lib://Base Trabajo Blast/Reservaciones_Trabajo.qvd]
-(qvd);
+(qvd) Where Mix_canal like '*Cliente*' ;
 
 
 /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -174,7 +174,7 @@ LOAD
     "fecha de envio blast" AS FechaB,
     Plaza AS Plaza_Blast,
     Mix_NA_IN AS Mix_NA_IN_Blast
-FROM [lib://Bases Blast/BaseAcumulada_2019_Prueba.csv]
+FROM [lib://Bases Blast/BaseAcumulada_2019_Actual.csv]
 (txt, utf8, embedded labels, delimiter is ',', msq)
 ;
 /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -282,9 +282,9 @@ LOAD
     PromotionCode as Código,
     Descripción as Group_Campaigns,
     AñoCampaña
-FROM [lib://Base Trabajo Blast/Catalogo Prueba Blast.xlsx]
+FROM [lib://Base Trabajo Blast/Catalogo Blast.xlsx]
 (ooxml, embedded labels, table is Sheet1);
-Drop table Clasificacion;
+//Drop table Clasificacion;
 /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 			Union de Base de años anteriores
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
@@ -334,65 +334,65 @@ LOAD
 
 FROM [lib://Base Trabajo Blast/Blast_2018.csv]
 (txt, utf8, embedded labels, delimiter is ',', msq)
-//WHERE AñoCampaña<2019 
+WHERE AñoCampaña<2019 
 ;
 
-// CONCATENATE
+CONCATENATE
 
-// Base2019:
-// LOAD 
-//     ReservationNumber
-//     ,%MemberID
-//     ,[Mix_NA_IN]
-//     ,ReservationSubTypeNew
-//     ,CapturingUserOriginal
-//     ,DateCreated
-//     ,FirstNight
-//     ,LastNight
-//     ,Guest
-//     ,ReservationStatus
-//     ,Mix_programa
-//     ,Mix_canal
-//     ,Mix_Mercado
-//     ,NotesText
-//     ,Deposits
-//     ,Service
-//     ,[No Show]
-//     ,PromotionCode
-//     ,FechaB
-//     ,[Nombre Blast]
-//     ,[Codigo TSWSC]
-//     ,[Con Código TSW]
-//     ,[Distancia Promedio]
-//     ,[Distancia Correcta]
-//     ,Año_Mes
-//     ,Año
-//     ,PromotionCode_OC
-//     ,[Reservación sin Codigo]
-//     ,Mes
-//     ,Promotion
-//     ,RoomType
-//     ,[Nombre BlastSC]
-//     ,SiteGroup
-//     ,Area
-//     ,Seguimiento
-//     ,Código1  
-//     ,[Nombre de la Campaña]
-//     ,Clasificación
-//     ,Código
-//     ,AñoCampaña
-//     ,Group_Campaigns
-//     ,Actualización
+Base2019:
+LOAD 
+    ReservationNumber
+    ,%MemberID
+    ,[Mix_NA_IN]
+    ,ReservationSubTypeNew
+    ,CapturingUserOriginal
+    ,DateCreated
+    ,FirstNight
+    ,LastNight
+    ,Guest
+    ,ReservationStatus
+    ,Mix_programa
+    ,Mix_canal
+    ,Mix_Mercado
+    ,NotesText
+    ,Deposits
+    ,Service
+    ,[No Show]
+    ,PromotionCode
+    ,FechaB
+    ,[Nombre Blast]
+    ,[Codigo TSWSC]
+    ,[Con Código TSW]
+    ,[Distancia Promedio]
+    ,[Distancia Correcta]
+    ,Año_Mes
+    ,Año
+    ,PromotionCode_OC
+    ,[Reservación sin Codigo]
+    ,Mes
+    ,Promotion
+    ,RoomType
+    ,[Nombre BlastSC]
+    ,SiteGroup
+    ,Area
+    ,Seguimiento
+    ,Código1  
+    ,[Nombre de la Campaña]
+    ,Clasificación
+    ,Código
+    ,AñoCampaña
+    ,Group_Campaigns
+    ,Actualización
 
-// Resident Clasificacion Where Not IsNull(AñoCampaña);
-// Drop Table Clasificacion;
-// STORE Años_Pasados into [lib://Base Trabajo Blast/Blast.csv](txt);
-// STORE Años_Pasados into [lib://Base Trabajo Blast/Blast.qvd](qvd);
-// Drop table Años_Pasados;	 	
+Resident Clasificacion Where Not IsNull(AñoCampaña);
+Drop Table Clasificacion;
+STORE Años_Pasados into [lib://Base Trabajo Blast/Blast.csv](txt);
+STORE Años_Pasados into [lib://Base Trabajo Blast/Blast.qvd](qvd);
+//Drop table Años_Pasados;	 	
 
-// /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-// 			Rentabilidad Campañas
-// :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
+/*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+			Rentabilidad Campañas
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
 // RentBlast:
 // LOAD
 //     ReservationNumber
